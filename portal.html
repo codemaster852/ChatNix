@@ -30,9 +30,9 @@
             animation: pulse-indigo 2s infinite;
         }
         @keyframes pulse-indigo {
-            0% { background-color: #4f46e5; }
-            50% { background-color: #4338ca; }
-            100% { background-color: #4f46e5; }
+            0% { background-color: #1e1b4b; }
+            50% { background-color: #312e81; }
+            100% { background-color: #1e1b4b; }
         }
     </style>
 </head>
@@ -112,13 +112,30 @@
         <h2 id="call-name-label" class="text-2xl font-bold mt-8">User</h2>
         <p id="call-status-label" class="mt-2 opacity-50 tracking-widest uppercase text-xs font-black">Connecting...</p>
         
-        <div class="flex gap-8 mt-16">
-            <button id="accept-call-btn" onclick="acceptIncomingCall()" class="hidden w-16 h-16 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600 transition shadow-lg active:scale-90">
-                <i class="fa-solid fa-phone text-2xl"></i>
-            </button>
-            <button onclick="endCall()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
-                <i class="fa-solid fa-phone-slash text-2xl"></i>
-            </button>
+        <div class="flex gap-12 mt-16">
+            <!-- Answer Button (Only visible for receiver) -->
+            <div id="receiver-actions" class="hidden flex gap-12">
+                <div class="flex flex-col items-center gap-2">
+                    <button onclick="acceptIncomingCall()" class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600 transition shadow-lg active:scale-90">
+                        <i class="fa-solid fa-phone text-2xl"></i>
+                    </button>
+                    <span class="text-[10px] font-bold uppercase opacity-60">Answer</span>
+                </div>
+                <div class="flex flex-col items-center gap-2">
+                    <button onclick="endCall()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
+                        <i class="fa-solid fa-phone-slash text-2xl"></i>
+                    </button>
+                    <span class="text-[10px] font-bold uppercase opacity-60">Ignore</span>
+                </div>
+            </div>
+
+            <!-- Hang Up Button (Only visible for caller or during active call) -->
+            <div id="caller-actions" class="flex flex-col items-center gap-2">
+                <button onclick="endCall()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
+                    <i class="fa-solid fa-phone-slash text-2xl"></i>
+                </button>
+                <span id="hangup-label" class="text-[10px] font-bold uppercase opacity-60">Hang Up</span>
+            </div>
         </div>
     </div>
 
@@ -334,13 +351,11 @@
         }
 
         function setupRealtime() {
-            // Messages listener
             client.channel('chat-room').on('postgres_changes', { event: 'INSERT', table: 'messages' }, p => {
                 const cid = [currentUser.id, selectedFriend?.id].sort().join(':');
                 if (p.new.chat_id === cid) appendMsg(p.new);
             }).subscribe();
 
-            // Calls listener (Signaling)
             client.channel('calls-room').on('postgres_changes', { event: '*', table: 'calls' }, payload => {
                 handleCallSignal(payload);
             }).subscribe();
@@ -351,7 +366,6 @@
         async function startCall() { 
             if (!selectedFriend) return;
             
-            // Check if there is an existing call from them to us (Join logic)
             const { data: existingIncoming } = await client
                 .from('calls')
                 .select('*')
@@ -359,13 +373,12 @@
                 .eq('receiver_id', currentUser.id)
                 .maybeSingle();
 
-            if (existingIncoming && existingIncoming.status !== 'ended') {
+            if (existingIncoming && existingIncoming.status === 'ringing') {
                 activeCallRecord = existingIncoming;
                 acceptIncomingCall();
                 return;
             }
 
-            // Create new outgoing call record
             const { data, error } = await client.from('calls').upsert([
                 { caller_id: currentUser.id, receiver_id: selectedFriend.id, status: 'ringing' }
             ], { onConflict: 'caller_id,receiver_id' }).select().single();
@@ -380,23 +393,20 @@
             const call = payload.new || payload.old;
             if (!call) return;
 
-            // Case: Someone is calling us
+            // Incoming call
             if (call.receiver_id === currentUser.id && payload.eventType === 'INSERT' && call.status === 'ringing') {
                 activeCallRecord = call;
-                // Fetch caller info
                 const { data: profile } = await client.from('profiles').select('*').eq('id', call.caller_id).single();
                 showCallUI('incoming', profile);
             }
 
-            // Case: Call was accepted by the other person
+            // Call accepted
             if (call.status === 'active' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) {
                 activeCallRecord = call;
-                document.getElementById('call-status-label').innerText = 'Call Active';
-                document.getElementById('call-status-label').classList.add('text-green-400');
-                document.getElementById('accept-call-btn').classList.add('hidden');
+                setCallStatusUI('active');
             }
 
-            // Case: Call was ended
+            // Call ended or ignored
             if (call.status === 'ended' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) {
                 closeCallUI();
             }
@@ -407,7 +417,10 @@
             const avatar = document.getElementById('call-avatar-circle');
             const name = document.getElementById('call-name-label');
             const status = document.getElementById('call-status-label');
-            const acceptBtn = document.getElementById('accept-call-btn');
+            
+            const receiverActions = document.getElementById('receiver-actions');
+            const callerActions = document.getElementById('caller-actions');
+            const hangupLabel = document.getElementById('hangup-label');
 
             overlay.classList.remove('hidden');
             avatar.innerText = (person.username || person.email || '?')[0].toUpperCase();
@@ -415,11 +428,31 @@
 
             if (type === 'incoming') {
                 status.innerText = 'Incoming Call...';
-                acceptBtn.classList.remove('hidden');
+                receiverActions.classList.remove('hidden');
+                callerActions.classList.add('hidden');
                 overlay.classList.add('incoming-call-anim');
             } else {
                 status.innerText = 'Calling...';
-                acceptBtn.classList.add('hidden');
+                receiverActions.classList.add('hidden');
+                callerActions.classList.remove('hidden');
+                hangupLabel.innerText = 'Cancel';
+                overlay.classList.remove('incoming-call-anim');
+            }
+        }
+
+        function setCallStatusUI(state) {
+            const status = document.getElementById('call-status-label');
+            const receiverActions = document.getElementById('receiver-actions');
+            const callerActions = document.getElementById('caller-actions');
+            const hangupLabel = document.getElementById('hangup-label');
+            const overlay = document.getElementById('call-overlay');
+
+            if (state === 'active') {
+                status.innerText = 'Call Active';
+                status.classList.add('text-green-400');
+                receiverActions.classList.add('hidden');
+                callerActions.classList.remove('hidden');
+                hangupLabel.innerText = 'End Call';
                 overlay.classList.remove('incoming-call-anim');
             }
         }
@@ -427,9 +460,7 @@
         async function acceptIncomingCall() {
             if (!activeCallRecord) return;
             await client.from('calls').update({ status: 'active' }).eq('id', activeCallRecord.id);
-            document.getElementById('call-status-label').innerText = 'Call Active';
-            document.getElementById('accept-call-btn').classList.add('hidden');
-            document.getElementById('call-overlay').classList.remove('incoming-call-anim');
+            setCallStatusUI('active');
         }
 
         async function endCall() {
@@ -441,6 +472,7 @@
 
         function closeCallUI() {
             document.getElementById('call-overlay').classList.add('hidden');
+            document.getElementById('call-status-label').classList.remove('text-green-400');
             activeCallRecord = null;
         }
 
