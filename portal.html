@@ -99,8 +99,10 @@
             if (!data.session) { window.location.href = 'auth.html'; return; }
             currentUser = data.session.user;
             
-            document.getElementById('my-name').innerText = currentUser.user_metadata.display_name || currentUser.email;
-            document.getElementById('my-avatar').innerText = (currentUser.user_metadata.display_name || 'U')[0].toUpperCase();
+            // Extract display name or email from user metadata
+            const displayName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.email;
+            document.getElementById('my-name').innerText = displayName;
+            document.getElementById('my-avatar').innerText = displayName[0].toUpperCase();
             
             renderChats();
             setupRealtime();
@@ -121,10 +123,10 @@
             const container = document.getElementById('list-container');
             container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Messages</div>';
             
-            const { data } = await client.from('friends').select('*, profiles!friends_friend_id_fkey(*)').eq('user_id', currentUser.id).eq('status', 'accepted');
+            const { data, error } = await client.from('friends').select('*, profiles!friends_friend_id_fkey(*)').eq('user_id', currentUser.id).eq('status', 'accepted');
             const { data: data2 } = await client.from('friends').select('*, profiles!friends_user_id_fkey(*)').eq('friend_id', currentUser.id).eq('status', 'accepted');
             
-            const friends = [...(data || []), ...(data2 || [])].map(f => f.profiles);
+            const friends = [...(data || []), ...(data2 || [])].map(f => f.profiles).filter(p => p !== null);
             
             if (friends.length === 0) {
                 container.innerHTML += '<p class="p-8 text-center text-slate-400 text-sm">No friends yet. Use search to find people!</p>';
@@ -135,7 +137,7 @@
                 const div = document.createElement('div');
                 div.className = `p-4 flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition border-b border-slate-50 ${selectedFriend?.id === f.id ? 'bg-indigo-50 border-l-4 border-indigo-500' : ''}`;
                 div.innerHTML = `
-                    <div class="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${f.username[0]}</div>
+                    <div class="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${(f.username || 'U')[0].toUpperCase()}</div>
                     <div class="flex-1 truncate"><div class="font-bold text-slate-800 text-sm">${f.username}</div><div class="text-[10px] text-slate-400">Tap to chat</div></div>
                 `;
                 div.onclick = () => openChat(f);
@@ -156,7 +158,7 @@
                     </div>
                 </div>
             `;
-            // Add Enter key listener
+            document.getElementById('search-input').focus();
             document.getElementById('search-input').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') performSearch();
             });
@@ -171,28 +173,35 @@
 
             resDiv.innerHTML = '<div class="text-center py-4"><i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i></div>';
 
+            // Try multiple fields for a broader search
             const { data, error } = await client
                 .from('profiles')
                 .select('*')
-                .ilike('username', `%${q}%`)
+                .or(`username.ilike.%${q}%,email.ilike.%${q}%`)
                 .neq('id', currentUser.id)
                 .limit(10);
 
             if (error) {
+                console.error("Search error:", error);
                 resDiv.innerHTML = `<p class="text-red-500 text-xs text-center">Error: ${error.message}</p>`;
                 return;
             }
 
             if (!data || data.length === 0) {
-                resDiv.innerHTML = '<p class="text-slate-400 text-xs text-center mt-4">No users found with that name.</p>';
+                resDiv.innerHTML = '<p class="text-slate-400 text-xs text-center mt-4">No users found. Try a different name or email.</p>';
                 return;
             }
 
-            resDiv.innerHTML = data.map(u => `
+            renderSearchResults(data);
+        }
+
+        function renderSearchResults(users) {
+            const resDiv = document.getElementById('search-results');
+            resDiv.innerHTML = users.map(u => `
                 <div class="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-indigo-200 transition">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">${u.username[0].toUpperCase()}</div>
-                        <span class="text-xs font-bold text-slate-700">${u.username}</span>
+                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">${(u.username || 'U')[0].toUpperCase()}</div>
+                        <span class="text-xs font-bold text-slate-700">${u.username || 'User'}</span>
                     </div>
                     <button onclick="sendRequest('${u.id}')" class="text-[9px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-indigo-700 active:scale-95 transition">Add</button>
                 </div>
@@ -223,7 +232,7 @@
                 const div = document.createElement('div');
                 div.className = "p-4 border-b border-slate-50 flex items-center justify-between animate-fade-in";
                 div.innerHTML = `
-                    <div class="text-xs font-bold text-slate-700">${r.profiles.username}</div>
+                    <div class="text-xs font-bold text-slate-700">${r.profiles?.username || 'Unknown'}</div>
                     <div class="flex gap-2">
                         <button onclick="updateReq(${r.id}, 'accepted')" class="p-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"><i class="fa-solid fa-check"></i></button>
                         <button onclick="updateReq(${r.id}, 'declined')" class="p-1.5 bg-slate-200 text-slate-500 rounded-lg hover:bg-slate-300 transition"><i class="fa-solid fa-xmark"></i></button>
@@ -247,7 +256,7 @@
             document.getElementById('no-chat').classList.add('hidden');
             document.getElementById('active-chat').classList.remove('hidden');
             document.getElementById('chat-name').innerText = friend.username;
-            document.getElementById('chat-avatar').innerText = friend.username[0].toUpperCase();
+            document.getElementById('chat-avatar').innerText = (friend.username || 'U')[0].toUpperCase();
             loadMessages();
         }
 
@@ -288,7 +297,7 @@
             }).subscribe();
         }
 
-        // Voice
+        // Voice recorder implementation
         const mic = document.getElementById('mic-btn');
         mic.onmousedown = async () => {
             try {
@@ -313,7 +322,7 @@
         mic.onmouseup = () => { if(mediaRecorder) mediaRecorder.stop(); mic.className = mic.className.replace('bg-red-500', 'bg-slate-100').replace('text-white', ''); };
 
         function startCall() { 
-            const overlay = `<div id="co" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in"><div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse mb-8 flex items-center justify-center text-4xl font-bold">${selectedFriend.username[0].toUpperCase()}</div><h2 class="text-2xl font-bold">${selectedFriend.username}</h2><p class="mb-12 opacity-50">Calling...</p><button onclick="document.getElementById('co').remove()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition"><i class="fa-solid fa-phone-slash text-2xl"></i></button></div>`;
+            const overlay = `<div id="co" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in"><div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse mb-8 flex items-center justify-center text-4xl font-bold">${(selectedFriend.username || 'U')[0].toUpperCase()}</div><h2 class="text-2xl font-bold">${selectedFriend.username}</h2><p class="mb-12 opacity-50">Calling...</p><button onclick="document.getElementById('co').remove()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition"><i class="fa-solid fa-phone-slash text-2xl"></i></button></div>`;
             document.body.insertAdjacentHTML('beforeend', overlay); 
         }
     </script>
