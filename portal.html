@@ -9,46 +9,52 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .chat-bg { background-color: #f8fafc; }
-        .message-in { background-color: white; border-radius: 0 1.25rem 1.25rem 1.25rem; }
-        .message-out { background-color: #4f46e5; color: white; border-radius: 1.25rem 0 1.25rem 1.25rem; }
+        .message-in { background-color: white; border-radius: 0 1.25rem 1.25rem 1.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .message-out { background-color: #4f46e5; color: white; border-radius: 1.25rem 0 1.25rem 1.25rem; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1); }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Pulse animation for recording */
-        .recording-pulse {
-            animation: pulse-red 1.5s infinite;
-        }
+        .recording-pulse { animation: pulse-red 1.5s infinite; }
         @keyframes pulse-red {
             0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
             70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
 
-        .incoming-call-anim {
-            animation: pulse-indigo 2s infinite;
-        }
+        .incoming-call-anim { animation: pulse-indigo 2s infinite; }
         @keyframes pulse-indigo {
             0% { background-color: #1e1b4b; }
             50% { background-color: #312e81; }
             100% { background-color: #1e1b4b; }
         }
+
+        .img-preview { max-width: 200px; border-radius: 0.75rem; cursor: pointer; transition: transform 0.2s; }
+        .img-preview:hover { transform: scale(1.02); }
     </style>
 </head>
-<body class="bg-slate-100 h-screen overflow-hidden flex font-sans">
+<body class="bg-slate-100 h-screen overflow-hidden flex font-sans text-slate-900">
 
     <!-- Sidebar -->
     <div id="sidebar" class="w-full md:w-80 border-r border-slate-200 flex flex-col bg-white">
-        <div class="p-5 bg-indigo-600 text-white flex justify-between items-center">
+        <div class="p-5 bg-indigo-600 text-white flex justify-between items-center shrink-0">
             <h1 class="text-xl font-bold tracking-tight">ChatNix</h1>
             <div class="flex gap-2">
-                <button onclick="switchTab('chats')" title="Messages" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-message"></i></button>
-                <button onclick="switchTab('search')" title="Find Friends" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-user-plus"></i></button>
+                <button onclick="switchTab('chats')" title="Messages" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-message text-sm"></i></button>
+                <button onclick="switchTab('search')" title="Find Friends" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-user-plus text-sm"></i></button>
                 <button onclick="switchTab('requests')" title="Requests" class="relative p-2 rounded-lg hover:bg-indigo-500 transition">
-                    <i class="fa-solid fa-bell"></i>
-                    <span id="req-badge" class="hidden absolute top-1 right-1 bg-red-500 w-2 h-2 rounded-full border-2 border-indigo-600"></span>
+                    <i class="fa-solid fa-bell text-sm"></i>
+                    <span id="req-badge" class="hidden absolute top-1.5 right-1.5 bg-red-500 w-2 h-2 rounded-full border-2 border-indigo-600"></span>
                 </button>
+            </div>
+        </div>
+
+        <!-- Local Search / Filter -->
+        <div class="px-4 py-3 bg-slate-50 border-b border-slate-100 shrink-0">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input id="friend-filter" type="text" oninput="filterFriends()" placeholder="Search conversations..." class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 transition">
             </div>
         </div>
 
@@ -56,11 +62,13 @@
             <!-- Dynamic Content -->
         </div>
 
-        <div class="p-4 border-t bg-slate-50 flex items-center gap-3">
-            <div id="my-avatar" class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">?</div>
+        <div class="p-4 border-t bg-slate-50 flex items-center gap-3 shrink-0">
+            <div id="my-avatar" class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">?</div>
             <div class="flex-1 truncate">
                 <div id="my-name" class="text-sm font-bold text-slate-800 truncate">Loading...</div>
-                <div class="text-[10px] text-indigo-500 font-bold uppercase tracking-wider">Online</div>
+                <div class="text-[10px] text-green-500 flex items-center gap-1 font-bold uppercase tracking-wider">
+                    <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online
+                </div>
             </div>
             <button onclick="handleLogout()" class="p-2 text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-power-off"></i></button>
         </div>
@@ -72,33 +80,57 @@
             <div class="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center mb-6">
                 <i class="fa-solid fa-comments text-4xl text-slate-200"></i>
             </div>
-            <p class="text-slate-400 font-medium">Select a conversation or find a friend to start chatting</p>
+            <h3 class="text-slate-500 font-bold text-lg">Your Messages</h3>
+            <p class="text-slate-400 font-medium text-sm max-w-xs mt-2">Select a conversation or find a friend to start chatting</p>
         </div>
 
         <div id="active-chat" class="hidden flex flex-col h-full">
-            <div class="p-4 bg-white border-b flex justify-between items-center shadow-sm z-10">
+            <!-- Chat Header -->
+            <div class="p-4 bg-white border-b flex justify-between items-center shadow-sm z-10 shrink-0">
                 <div class="flex items-center gap-3">
                     <div id="chat-avatar" class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">?</div>
                     <div>
                         <div id="chat-name" class="font-bold text-slate-800">Friend</div>
-                        <div class="text-[10px] text-green-500 flex items-center gap-1 font-bold"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> ACTIVE</div>
+                        <div id="chat-status" class="text-[10px] text-green-500 flex items-center gap-1 font-bold uppercase tracking-tighter">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Active
+                        </div>
                     </div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="startCall()" class="w-10 h-10 text-indigo-600 rounded-full hover:bg-indigo-50 flex items-center justify-center"><i class="fa-solid fa-phone"></i></button>
+                <div class="flex gap-1">
+                    <button onclick="startCall()" title="Voice Call" class="w-10 h-10 text-slate-400 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition flex items-center justify-center"><i class="fa-solid fa-phone text-sm"></i></button>
+                    <button class="w-10 h-10 text-slate-400 rounded-xl hover:bg-slate-100 transition flex items-center justify-center"><i class="fa-solid fa-ellipsis-vertical text-sm"></i></button>
                 </div>
             </div>
 
+            <!-- Messages Area -->
             <div id="messages-container" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
 
-            <div class="p-4 bg-white border-t flex items-center gap-3">
-                <button id="mic-btn" class="w-12 h-12 bg-slate-100 text-slate-500 rounded-2xl hover:bg-indigo-50 hover:text-indigo-600 transition flex items-center justify-center">
-                    <i class="fa-solid fa-microphone"></i>
-                </button>
-                <input id="msg-input" type="text" placeholder="Write a message..." class="flex-1 bg-slate-100 rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none border-none">
-                <button onclick="sendTextMessage()" class="w-12 h-12 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition flex items-center justify-center">
-                    <i class="fa-solid fa-paper-plane"></i>
-                </button>
+            <!-- Typing/Attachment Bar -->
+            <div class="p-4 bg-white border-t flex flex-col gap-3 shrink-0">
+                <div id="attachment-preview" class="hidden flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600"><i class="fa-solid fa-file"></i></div>
+                    <div class="flex-1 text-[10px] font-bold truncate" id="file-name-preview">File.png</div>
+                    <button onclick="clearAttachment()" class="p-1.5 text-slate-400 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="flex gap-1">
+                        <input type="file" id="file-input" class="hidden" onchange="handleFileSelect(event)">
+                        <button onclick="document.getElementById('file-input').click()" title="Send Image/File" class="w-10 h-10 bg-slate-100 text-slate-500 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition flex items-center justify-center">
+                            <i class="fa-solid fa-paperclip text-sm"></i>
+                        </button>
+                        <button id="mic-btn" title="Hold to record" class="w-10 h-10 bg-slate-100 text-slate-500 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition flex items-center justify-center">
+                            <i class="fa-solid fa-microphone text-sm"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="flex-1 relative">
+                        <input id="msg-input" type="text" placeholder="Type a message..." class="w-full bg-slate-100 rounded-xl px-5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none border-none transition">
+                    </div>
+
+                    <button onclick="sendTextMessage()" class="w-10 h-10 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-paper-plane text-xs"></i>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -109,11 +141,10 @@
             <div id="call-avatar-circle" class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse flex items-center justify-center text-4xl font-bold shadow-2xl">?</div>
             <div class="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-indigo-950"></div>
         </div>
-        <h2 id="call-name-label" class="text-2xl font-bold mt-8">User</h2>
+        <h2 id="call-name-label" class="text-2xl font-bold mt-8 text-center px-4">User</h2>
         <p id="call-status-label" class="mt-2 opacity-50 tracking-widest uppercase text-xs font-black">Connecting...</p>
         
         <div class="flex gap-12 mt-16">
-            <!-- Answer Button (Only visible for receiver) -->
             <div id="receiver-actions" class="hidden flex gap-12">
                 <div class="flex flex-col items-center gap-2">
                     <button onclick="acceptIncomingCall()" class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600 transition shadow-lg active:scale-90">
@@ -129,7 +160,6 @@
                 </div>
             </div>
 
-            <!-- Hang Up Button (Only visible for caller or during active call) -->
             <div id="caller-actions" class="flex flex-col items-center gap-2">
                 <button onclick="endCall()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
                     <i class="fa-solid fa-phone-slash text-2xl"></i>
@@ -150,6 +180,8 @@
         let audioChunks = [];
         let stream = null;
         let activeCallRecord = null;
+        let pendingFile = null;
+        let allFriends = [];
 
         window.onload = async () => {
             const { data } = await client.auth.getSession();
@@ -162,6 +194,10 @@
             
             renderChats();
             setupRealtime();
+
+            document.getElementById('msg-input').addEventListener('keypress', e => {
+                if (e.key === 'Enter') sendTextMessage();
+            });
         };
 
         async function handleLogout() {
@@ -170,6 +206,8 @@
         }
 
         function switchTab(tab) {
+            const list = document.getElementById('list-container');
+            list.innerHTML = ''; 
             if (tab === 'chats') renderChats();
             else if (tab === 'search') renderSearch();
             else if (tab === 'requests') renderRequests();
@@ -177,24 +215,45 @@
 
         async function renderChats() {
             const container = document.getElementById('list-container');
-            container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Messages</div>';
+            container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Conversations</div>';
             
             const { data } = await client.from('friends').select('*, profiles!friends_friend_id_fkey(*)').eq('user_id', currentUser.id).eq('status', 'accepted');
             const { data: data2 } = await client.from('friends').select('*, profiles!friends_user_id_fkey(*)').eq('friend_id', currentUser.id).eq('status', 'accepted');
             
-            const friends = [...(data || []), ...(data2 || [])].map(f => f.profiles).filter(p => p !== null);
+            allFriends = [...(data || []), ...(data2 || [])].map(f => f.profiles).filter(p => p !== null);
             
-            if (friends.length === 0) {
-                container.innerHTML += '<p class="p-8 text-center text-slate-400 text-sm">No friends yet. Use search to find people!</p>';
+            if (allFriends.length === 0) {
+                container.innerHTML += '<div class="p-12 text-center"><i class="fa-solid fa-ghost text-slate-200 text-3xl mb-3"></i><p class="text-slate-400 text-xs font-medium">No conversations yet.</p></div>';
                 return;
             }
 
-            friends.forEach(f => {
+            displayFriends(allFriends);
+        }
+
+        function filterFriends() {
+            const q = document.getElementById('friend-filter').value.toLowerCase();
+            const filtered = allFriends.filter(f => f.username.toLowerCase().includes(q));
+            displayFriends(filtered);
+        }
+
+        function displayFriends(list) {
+            const container = document.getElementById('list-container');
+            // Keep header
+            container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Conversations</div>';
+            
+            list.forEach(f => {
+                const isSelected = selectedFriend?.id === f.id;
                 const div = document.createElement('div');
-                div.className = `p-4 flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition border-b border-slate-50 ${selectedFriend?.id === f.id ? 'bg-indigo-50 border-l-4 border-indigo-500' : ''}`;
+                div.className = `px-4 py-3 flex items-center gap-3 cursor-pointer transition relative group ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`;
                 div.innerHTML = `
-                    <div class="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">${(f.username || 'U')[0].toUpperCase()}</div>
-                    <div class="flex-1 truncate"><div class="font-bold text-slate-800 text-sm">${f.username}</div><div class="text-[10px] text-slate-400">Tap to chat</div></div>
+                    <div class="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold shrink-0 transition group-hover:scale-105">${(f.username || 'U')[0].toUpperCase()}</div>
+                    <div class="flex-1 truncate">
+                        <div class="flex justify-between items-center mb-0.5">
+                            <span class="font-bold text-slate-800 text-sm">${f.username}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 truncate font-medium">Tap to start chatting</div>
+                    </div>
+                    ${isSelected ? '<div class="absolute right-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-full"></div>' : ''}
                 `;
                 div.onclick = () => openChat(f);
                 container.appendChild(div);
@@ -206,18 +265,13 @@
             container.innerHTML = `
                 <div class="p-4 space-y-4 animate-fade-in">
                     <div class="flex gap-2">
-                        <input id="search-input" type="text" placeholder="Type a username..." class="flex-1 px-4 py-2.5 bg-slate-100 rounded-xl outline-none text-sm border focus:border-indigo-300 transition">
-                        <button onclick="performSearch()" class="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 transition"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        <input id="search-input" type="text" placeholder="Type a username..." class="flex-1 px-4 py-2 bg-slate-100 rounded-xl outline-none text-xs border border-transparent focus:border-indigo-300 focus:bg-white transition">
+                        <button onclick="performSearch()" class="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 transition"><i class="fa-solid fa-magnifying-glass text-xs"></i></button>
                     </div>
-                    <div id="search-results" class="space-y-2">
-                        <p class="text-center text-slate-400 text-xs mt-4">Search for users to add them as friends</p>
-                    </div>
+                    <div id="search-results" class="space-y-2"></div>
                 </div>
             `;
             document.getElementById('search-input').focus();
-            document.getElementById('search-input').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') performSearch();
-            });
         }
 
         async function performSearch() {
@@ -227,31 +281,20 @@
             if (!q) return;
 
             resDiv.innerHTML = '<div class="text-center py-4"><i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i></div>';
+            const { data } = await client.from('profiles').select('*').or(`username.ilike.%${q}%,email.ilike.%${q}%`).neq('id', currentUser.id).limit(10);
 
-            const { data, error } = await client
-                .from('profiles')
-                .select('*')
-                .or(`username.ilike.%${q}%,email.ilike.%${q}%`)
-                .neq('id', currentUser.id)
-                .limit(10);
-
-            if (error) {
-                resDiv.innerHTML = `<p class="text-red-500 text-xs text-center">Error: ${error.message}</p>`;
-                return;
-            }
-
-            if (!data || data.length === 0) {
-                resDiv.innerHTML = '<p class="text-slate-400 text-xs text-center mt-4">No users found.</p>';
+            if (!data?.length) {
+                resDiv.innerHTML = '<p class="text-slate-400 text-[10px] text-center mt-4">No users found.</p>';
                 return;
             }
 
             resDiv.innerHTML = data.map(u => `
-                <div class="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-indigo-200 transition">
+                <div class="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 transition">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">${(u.username || 'U')[0].toUpperCase()}</div>
-                        <span class="text-xs font-bold text-slate-700">${u.username || 'User'}</span>
+                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">${u.username[0].toUpperCase()}</div>
+                        <span class="text-xs font-bold text-slate-700">${u.username}</span>
                     </div>
-                    <button onclick="sendRequest('${u.id}')" class="text-[9px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-indigo-700 transition">Add</button>
+                    <button onclick="sendRequest('${u.id}')" class="text-[10px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-indigo-700 transition">Add</button>
                 </div>
             `).join('');
         }
@@ -267,8 +310,8 @@
             container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Incoming Requests</div>';
             const { data } = await client.from('friends').select('*, profiles!friends_user_id_fkey(*)').eq('friend_id', currentUser.id).eq('status', 'pending');
             
-            if (!data || data.length === 0) {
-                container.innerHTML += '<p class="p-8 text-center text-slate-400 text-sm">No new requests</p>';
+            if (!data?.length) {
+                container.innerHTML += '<p class="p-8 text-center text-slate-400 text-[10px] font-medium italic">No new requests</p>';
                 return;
             }
 
@@ -278,8 +321,8 @@
                 div.innerHTML = `
                     <div class="text-xs font-bold text-slate-700">${r.profiles?.username || 'Unknown'}</div>
                     <div class="flex gap-2">
-                        <button onclick="updateReq(${r.id}, 'accepted')" class="p-1.5 bg-green-500 text-white rounded-lg"><i class="fa-solid fa-check"></i></button>
-                        <button onclick="updateReq(${r.id}, 'declined')" class="p-1.5 bg-slate-200 text-slate-500 rounded-lg"><i class="fa-solid fa-xmark"></i></button>
+                        <button onclick="updateReq(${r.id}, 'accepted')" class="w-8 h-8 bg-green-500 text-white rounded-lg flex items-center justify-center"><i class="fa-solid fa-check text-xs"></i></button>
+                        <button onclick="updateReq(${r.id}, 'declined')" class="w-8 h-8 bg-slate-200 text-slate-500 rounded-lg flex items-center justify-center"><i class="fa-solid fa-xmark text-xs"></i></button>
                     </div>
                 `;
                 container.appendChild(div);
@@ -299,6 +342,7 @@
             document.getElementById('chat-name').innerText = friend.username;
             document.getElementById('chat-avatar').innerText = (friend.username || 'U')[0].toUpperCase();
             loadMessages();
+            renderChats(); // Update visual selection
         }
 
         async function loadMessages() {
@@ -313,41 +357,77 @@
         function appendMsg(m) {
             const container = document.getElementById('messages-container');
             const isMe = m.sender_id === currentUser.id;
-            const div = document.createElement('div');
-            div.className = `flex ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`;
+            const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
+            const div = document.createElement('div');
+            div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-fade-in group`;
+            
+            let contentHtml = '';
             if (m.type === 'voice') {
-                div.innerHTML = `
-                    <div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in'}">
+                contentHtml = `
+                    <div class="p-3 ${isMe ? 'message-out' : 'message-in'}">
                         <button onclick="playVoice(this, '${m.content}')" class="flex items-center gap-3">
                             <i class="fa-solid fa-play"></i>
                             <span class="text-xs font-bold uppercase tracking-wider">Voice Note</span>
                         </button>
                     </div>
                 `;
+            } else if (m.type === 'image') {
+                contentHtml = `<div class="p-1 ${isMe ? 'message-out' : 'message-in'}"><img src="${m.content}" class="img-preview" onclick="window.open(this.src)"></div>`;
             } else {
-                div.innerHTML = `<div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in text-slate-700'} text-sm font-medium">${m.content}</div>`;
+                contentHtml = `<div class="p-3 ${isMe ? 'message-out' : 'message-in text-slate-700'} text-sm font-medium leading-relaxed">${m.content}</div>`;
             }
+
+            div.innerHTML = `
+                ${contentHtml}
+                <div class="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span class="text-[9px] text-slate-400 font-bold">${time}</span>
+                    ${isMe ? '<i class="fa-solid fa-check-double text-[9px] text-indigo-400"></i>' : ''}
+                </div>
+            `;
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
         }
 
-        function playVoice(btn, dataUrl) {
-            const icon = btn.querySelector('i');
-            const audio = new Audio(dataUrl);
-            icon.className = 'fa-solid fa-spinner fa-spin';
-            audio.play();
-            audio.onplay = () => icon.className = 'fa-solid fa-pause';
-            audio.onended = () => icon.className = 'fa-solid fa-play';
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                pendingFile = event.target.result;
+                document.getElementById('attachment-preview').classList.remove('hidden');
+                document.getElementById('file-name-preview').innerText = file.name;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearAttachment() {
+            pendingFile = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('attachment-preview').classList.add('hidden');
         }
 
         async function sendTextMessage() {
             const inp = document.getElementById('msg-input');
             const content = inp.value.trim();
-            if (!content || !selectedFriend) return;
+            if ((!content && !pendingFile) || !selectedFriend) return;
+            
             const cid = [currentUser.id, selectedFriend.id].sort().join(':');
-            await client.from('messages').insert([{ chat_id: cid, sender_id: currentUser.id, content }]);
-            inp.value = '';
+            
+            if (pendingFile) {
+                await client.from('messages').insert([{ 
+                    chat_id: cid, 
+                    sender_id: currentUser.id, 
+                    content: pendingFile, 
+                    type: 'image' 
+                }]);
+                clearAttachment();
+            }
+
+            if (content) {
+                await client.from('messages').insert([{ chat_id: cid, sender_id: currentUser.id, content }]);
+                inp.value = '';
+            }
         }
 
         function setupRealtime() {
@@ -361,99 +441,60 @@
             }).subscribe();
         }
 
-        // --- IMPROVED CALLING LOGIC (Signaling) ---
-
+        // --- CALLING LOGIC ---
         async function startCall() { 
             if (!selectedFriend) return;
-            
-            const { data: existingIncoming } = await client
-                .from('calls')
-                .select('*')
-                .eq('caller_id', selectedFriend.id)
-                .eq('receiver_id', currentUser.id)
-                .maybeSingle();
+            const { data: existing } = await client.from('calls').select('*').eq('caller_id', selectedFriend.id).eq('receiver_id', currentUser.id).maybeSingle();
+            if (existing && existing.status === 'ringing') { activeCallRecord = existing; acceptIncomingCall(); return; }
 
-            if (existingIncoming && existingIncoming.status === 'ringing') {
-                activeCallRecord = existingIncoming;
-                acceptIncomingCall();
-                return;
-            }
-
-            const { data, error } = await client.from('calls').upsert([
-                { caller_id: currentUser.id, receiver_id: selectedFriend.id, status: 'ringing' }
-            ], { onConflict: 'caller_id,receiver_id' }).select().single();
-
-            if (error) { console.error(error); return; }
+            const { data } = await client.from('calls').upsert([{ caller_id: currentUser.id, receiver_id: selectedFriend.id, status: 'ringing' }], { onConflict: 'caller_id,receiver_id' }).select().single();
             activeCallRecord = data;
-
             showCallUI('outgoing', selectedFriend);
         }
 
         async function handleCallSignal(payload) {
             const call = payload.new || payload.old;
             if (!call) return;
-
-            // Incoming call
             if (call.receiver_id === currentUser.id && payload.eventType === 'INSERT' && call.status === 'ringing') {
                 activeCallRecord = call;
-                const { data: profile } = await client.from('profiles').select('*').eq('id', call.caller_id).single();
-                showCallUI('incoming', profile);
+                const { data } = await client.from('profiles').select('*').eq('id', call.caller_id).single();
+                showCallUI('incoming', data);
             }
-
-            // Call accepted
             if (call.status === 'active' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) {
                 activeCallRecord = call;
                 setCallStatusUI('active');
             }
-
-            // Call ended or ignored
-            if (call.status === 'ended' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) {
-                closeCallUI();
-            }
+            if (call.status === 'ended' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) closeCallUI();
         }
 
         function showCallUI(type, person) {
             const overlay = document.getElementById('call-overlay');
-            const avatar = document.getElementById('call-avatar-circle');
-            const name = document.getElementById('call-name-label');
-            const status = document.getElementById('call-status-label');
-            
-            const receiverActions = document.getElementById('receiver-actions');
-            const callerActions = document.getElementById('caller-actions');
-            const hangupLabel = document.getElementById('hangup-label');
-
             overlay.classList.remove('hidden');
-            avatar.innerText = (person.username || person.email || '?')[0].toUpperCase();
-            name.innerText = person.username || person.email;
+            document.getElementById('call-avatar-circle').innerText = (person.username || '?')[0].toUpperCase();
+            document.getElementById('call-name-label').innerText = person.username;
 
             if (type === 'incoming') {
-                status.innerText = 'Incoming Call...';
-                receiverActions.classList.remove('hidden');
-                callerActions.classList.add('hidden');
+                document.getElementById('call-status-label').innerText = 'Incoming Call...';
+                document.getElementById('receiver-actions').classList.remove('hidden');
+                document.getElementById('caller-actions').classList.add('hidden');
                 overlay.classList.add('incoming-call-anim');
             } else {
-                status.innerText = 'Calling...';
-                receiverActions.classList.add('hidden');
-                callerActions.classList.remove('hidden');
-                hangupLabel.innerText = 'Cancel';
+                document.getElementById('call-status-label').innerText = 'Calling...';
+                document.getElementById('receiver-actions').classList.add('hidden');
+                document.getElementById('caller-actions').classList.remove('hidden');
+                document.getElementById('hangup-label').innerText = 'Cancel';
                 overlay.classList.remove('incoming-call-anim');
             }
         }
 
         function setCallStatusUI(state) {
-            const status = document.getElementById('call-status-label');
-            const receiverActions = document.getElementById('receiver-actions');
-            const callerActions = document.getElementById('caller-actions');
-            const hangupLabel = document.getElementById('hangup-label');
-            const overlay = document.getElementById('call-overlay');
-
             if (state === 'active') {
-                status.innerText = 'Call Active';
-                status.classList.add('text-green-400');
-                receiverActions.classList.add('hidden');
-                callerActions.classList.remove('hidden');
-                hangupLabel.innerText = 'End Call';
-                overlay.classList.remove('incoming-call-anim');
+                document.getElementById('call-status-label').innerText = 'Call Active';
+                document.getElementById('call-status-label').classList.add('text-green-400');
+                document.getElementById('receiver-actions').classList.add('hidden');
+                document.getElementById('caller-actions').classList.remove('hidden');
+                document.getElementById('hangup-label').innerText = 'End Call';
+                document.getElementById('call-overlay').classList.remove('incoming-call-anim');
             }
         }
 
@@ -464,9 +505,7 @@
         }
 
         async function endCall() {
-            if (activeCallRecord) {
-                await client.from('calls').update({ status: 'ended' }).eq('id', activeCallRecord.id);
-            }
+            if (activeCallRecord) await client.from('calls').update({ status: 'ended' }).eq('id', activeCallRecord.id);
             closeCallUI();
         }
 
@@ -476,54 +515,45 @@
             activeCallRecord = null;
         }
 
+        function playVoice(btn, dataUrl) {
+            const icon = btn.querySelector('i');
+            const audio = new Audio(dataUrl);
+            icon.className = 'fa-solid fa-spinner fa-spin';
+            audio.play();
+            audio.onplay = () => icon.className = 'fa-solid fa-pause';
+            audio.onended = () => icon.className = 'fa-solid fa-play';
+        }
+
         // --- VOICE NOTE LOGIC ---
         const mic = document.getElementById('mic-btn');
-        
         async function startRecording() {
             try {
                 audioChunks = [];
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
-                
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) audioChunks.push(event.data);
-                };
-
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
                 mediaRecorder.onstop = async () => {
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                     const reader = new FileReader();
                     reader.readAsDataURL(audioBlob);
                     reader.onloadend = async () => {
-                        const base64data = reader.result;
                         const cid = [currentUser.id, selectedFriend.id].sort().join(':');
-                        await client.from('messages').insert([{ 
-                            chat_id: cid, 
-                            sender_id: currentUser.id, 
-                            content: base64data, 
-                            type: 'voice' 
-                        }]);
+                        await client.from('messages').insert([{ chat_id: cid, sender_id: currentUser.id, content: reader.result, type: 'voice' }]);
                     };
-                    stream.getTracks().forEach(track => track.stop());
+                    stream.getTracks().forEach(t => t.stop());
                 };
-
                 mediaRecorder.start();
                 mic.classList.add('bg-red-500', 'text-white', 'recording-pulse');
-                mic.classList.remove('bg-slate-100', 'text-slate-500');
-            } catch (err) {
-                alert("Could not access microphone.");
-            }
+            } catch (err) { alert("Mic access denied."); }
         }
-
         function stopRecording() {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            if (mediaRecorder?.state !== 'inactive') {
                 mediaRecorder.stop();
                 mic.classList.remove('bg-red-500', 'text-white', 'recording-pulse');
-                mic.classList.add('bg-slate-100', 'text-slate-500');
             }
         }
-
-        mic.addEventListener('pointerdown', (e) => { e.preventDefault(); startRecording(); });
-        window.addEventListener('pointerup', () => { stopRecording(); });
+        mic.addEventListener('pointerdown', e => { e.preventDefault(); startRecording(); });
+        window.addEventListener('pointerup', () => stopRecording());
 
     </script>
 </body>
