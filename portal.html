@@ -25,6 +25,15 @@
             70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
+
+        .incoming-call-anim {
+            animation: pulse-indigo 2s infinite;
+        }
+        @keyframes pulse-indigo {
+            0% { background-color: #4f46e5; }
+            50% { background-color: #4338ca; }
+            100% { background-color: #4f46e5; }
+        }
     </style>
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden flex font-sans">
@@ -94,6 +103,25 @@
         </div>
     </div>
 
+    <!-- Call Overlay -->
+    <div id="call-overlay" class="hidden fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in">
+        <div class="relative">
+            <div id="call-avatar-circle" class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse flex items-center justify-center text-4xl font-bold shadow-2xl">?</div>
+            <div class="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-indigo-950"></div>
+        </div>
+        <h2 id="call-name-label" class="text-2xl font-bold mt-8">User</h2>
+        <p id="call-status-label" class="mt-2 opacity-50 tracking-widest uppercase text-xs font-black">Connecting...</p>
+        
+        <div class="flex gap-8 mt-16">
+            <button id="accept-call-btn" onclick="acceptIncomingCall()" class="hidden w-16 h-16 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600 transition shadow-lg active:scale-90">
+                <i class="fa-solid fa-phone text-2xl"></i>
+            </button>
+            <button onclick="endCall()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
+                <i class="fa-solid fa-phone-slash text-2xl"></i>
+            </button>
+        </div>
+    </div>
+
     <script>
         const SUPABASE_URL = 'https://aolxwzszsfvtqjbldcdd.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_vyNRd2NL0JTDuYFtgMBleQ_ot-BhqRt';
@@ -104,6 +132,7 @@
         let mediaRecorder = null;
         let audioChunks = [];
         let stream = null;
+        let activeCallRecord = null;
 
         window.onload = async () => {
             const { data } = await client.auth.getSession();
@@ -305,13 +334,117 @@
         }
 
         function setupRealtime() {
-            client.channel('any').on('postgres_changes', { event: 'INSERT', table: 'messages' }, p => {
+            // Messages listener
+            client.channel('chat-room').on('postgres_changes', { event: 'INSERT', table: 'messages' }, p => {
                 const cid = [currentUser.id, selectedFriend?.id].sort().join(':');
                 if (p.new.chat_id === cid) appendMsg(p.new);
             }).subscribe();
+
+            // Calls listener (Signaling)
+            client.channel('calls-room').on('postgres_changes', { event: '*', table: 'calls' }, payload => {
+                handleCallSignal(payload);
+            }).subscribe();
         }
 
-        // --- FIXED VOICE NOTE LOGIC ---
+        // --- IMPROVED CALLING LOGIC (Signaling) ---
+
+        async function startCall() { 
+            if (!selectedFriend) return;
+            
+            // Check if there is an existing call from them to us (Join logic)
+            const { data: existingIncoming } = await client
+                .from('calls')
+                .select('*')
+                .eq('caller_id', selectedFriend.id)
+                .eq('receiver_id', currentUser.id)
+                .maybeSingle();
+
+            if (existingIncoming && existingIncoming.status !== 'ended') {
+                activeCallRecord = existingIncoming;
+                acceptIncomingCall();
+                return;
+            }
+
+            // Create new outgoing call record
+            const { data, error } = await client.from('calls').upsert([
+                { caller_id: currentUser.id, receiver_id: selectedFriend.id, status: 'ringing' }
+            ], { onConflict: 'caller_id,receiver_id' }).select().single();
+
+            if (error) { console.error(error); return; }
+            activeCallRecord = data;
+
+            showCallUI('outgoing', selectedFriend);
+        }
+
+        async function handleCallSignal(payload) {
+            const call = payload.new || payload.old;
+            if (!call) return;
+
+            // Case: Someone is calling us
+            if (call.receiver_id === currentUser.id && payload.eventType === 'INSERT' && call.status === 'ringing') {
+                activeCallRecord = call;
+                // Fetch caller info
+                const { data: profile } = await client.from('profiles').select('*').eq('id', call.caller_id).single();
+                showCallUI('incoming', profile);
+            }
+
+            // Case: Call was accepted by the other person
+            if (call.status === 'active' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) {
+                activeCallRecord = call;
+                document.getElementById('call-status-label').innerText = 'Call Active';
+                document.getElementById('call-status-label').classList.add('text-green-400');
+                document.getElementById('accept-call-btn').classList.add('hidden');
+            }
+
+            // Case: Call was ended
+            if (call.status === 'ended' && (call.caller_id === currentUser.id || call.receiver_id === currentUser.id)) {
+                closeCallUI();
+            }
+        }
+
+        function showCallUI(type, person) {
+            const overlay = document.getElementById('call-overlay');
+            const avatar = document.getElementById('call-avatar-circle');
+            const name = document.getElementById('call-name-label');
+            const status = document.getElementById('call-status-label');
+            const acceptBtn = document.getElementById('accept-call-btn');
+
+            overlay.classList.remove('hidden');
+            avatar.innerText = (person.username || person.email || '?')[0].toUpperCase();
+            name.innerText = person.username || person.email;
+
+            if (type === 'incoming') {
+                status.innerText = 'Incoming Call...';
+                acceptBtn.classList.remove('hidden');
+                overlay.classList.add('incoming-call-anim');
+            } else {
+                status.innerText = 'Calling...';
+                acceptBtn.classList.add('hidden');
+                overlay.classList.remove('incoming-call-anim');
+            }
+        }
+
+        async function acceptIncomingCall() {
+            if (!activeCallRecord) return;
+            await client.from('calls').update({ status: 'active' }).eq('id', activeCallRecord.id);
+            document.getElementById('call-status-label').innerText = 'Call Active';
+            document.getElementById('accept-call-btn').classList.add('hidden');
+            document.getElementById('call-overlay').classList.remove('incoming-call-anim');
+        }
+
+        async function endCall() {
+            if (activeCallRecord) {
+                await client.from('calls').update({ status: 'ended' }).eq('id', activeCallRecord.id);
+            }
+            closeCallUI();
+        }
+
+        function closeCallUI() {
+            document.getElementById('call-overlay').classList.add('hidden');
+            activeCallRecord = null;
+        }
+
+        // --- VOICE NOTE LOGIC ---
         const mic = document.getElementById('mic-btn');
         
         async function startRecording() {
@@ -338,7 +471,6 @@
                             type: 'voice' 
                         }]);
                     };
-                    // Stop all tracks to release microphone
                     stream.getTracks().forEach(track => track.stop());
                 };
 
@@ -346,8 +478,7 @@
                 mic.classList.add('bg-red-500', 'text-white', 'recording-pulse');
                 mic.classList.remove('bg-slate-100', 'text-slate-500');
             } catch (err) {
-                console.error("Mic error:", err);
-                alert("Could not access microphone. Please check permissions.");
+                alert("Could not access microphone.");
             }
         }
 
@@ -359,41 +490,9 @@
             }
         }
 
-        // Use pointer events for better mobile/desktop compatibility
-        mic.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            startRecording();
-        });
-        
-        window.addEventListener('pointerup', () => {
-            stopRecording();
-        });
+        mic.addEventListener('pointerdown', (e) => { e.preventDefault(); startRecording(); });
+        window.addEventListener('pointerup', () => { stopRecording(); });
 
-        // --- FIXED CALLING UI ---
-        function startCall() { 
-            if (!selectedFriend) return;
-            
-            const overlayId = 'call-overlay-' + Date.now();
-            const overlay = `
-                <div id="${overlayId}" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in">
-                    <div class="relative">
-                        <div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse flex items-center justify-center text-4xl font-bold shadow-2xl">
-                            ${(selectedFriend.username || 'U')[0].toUpperCase()}
-                        </div>
-                        <div class="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-indigo-950"></div>
-                    </div>
-                    <h2 class="text-2xl font-bold mt-8">${selectedFriend.username}</h2>
-                    <p class="mt-2 opacity-50 tracking-widest uppercase text-xs font-black">Calling via ChatNix...</p>
-                    
-                    <div class="flex gap-8 mt-16">
-                        <button onclick="document.getElementById('${overlayId}').remove()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
-                            <i class="fa-solid fa-phone-slash text-2xl"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', overlay); 
-        }
     </script>
 </body>
 </html>
