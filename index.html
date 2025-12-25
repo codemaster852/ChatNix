@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatNix - Connect Beyond Words</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .gradient-text {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .feature-card:hover { transform: translateY(-5px); transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 overflow-x-hidden">
+    <!-- Navigation -->
+    <nav class="flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
+        <div class="flex items-center gap-2">
+            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                <i class="fa-solid fa-comment-dots"></i>
+            </div>
+            <span class="text-2xl font-black tracking-tighter">ChatNix</span>
+        </div>
+        <div>
+            <a href="auth.html" class="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-bold shadow-md hover:bg-indigo-700 transition-all">
+                Get Started
+            </a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="max-w-7xl mx-auto px-6 pt-20 pb-32 text-center">
+        <h1 class="text-5xl md:text-7xl font-black mb-6 leading-tight">
+            Messaging for the <br>
+            <span class="gradient-text">Modern Generation.</span>
+        </h1>
+        <p class="text-slate-500 text-lg md:text-xl max-w-2xl mx-auto mb-10">
+            Secure, fast, and feature-rich. Connect with friends through crystal-clear voice notes, instant messaging, and seamless social discovery.
+        </p>
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="auth.html" class="w-full sm:w-auto px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 transition-all">
+                Start Chatting Now
+            </a>
+            <button class="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-2xl font-bold text-lg hover:bg-slate-50 transition-all">
+                View Demo
+            </button>
+        </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="bg-white py-24 border-y border-slate-100">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-black mb-4">Why choose ChatNix?</h2>
+                <p class="text-slate-500">Everything you need to stay connected with your circle.</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="feature-card p-8 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div class="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mb-6 text-2xl">
+                        <i class="fa-solid fa-microphone-lines"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Voice Notes</h3>
+                    <p class="text-slate-500 text-sm leading-relaxed">
+                        Words aren't enough? Send high-quality voice snippets instantly to capture every emotion.
+                    </p>
+                </div>
+                <!-- Feature 2 -->
+                <div class="feature-card p-8 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div class="w-14 h-14 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-6 text-2xl">
+                        <i class="fa-solid fa-bolt"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Real-time Sync</h3>
+                    <p class="text-slate-500 text-sm leading-relaxed">
+                        Powered by Supabase Realtime. Messages arrive faster than you can think them.
+                    </p>
+                </div>
+                <!-- Feature 3 -->
+                <div class="feature-card p-8 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6 text-2xl">
+                        <i class="fa-solid fa-user-group"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-3">Social Discovery</h3>
+                    <p class="text-slate-500 text-sm leading-relaxed">
+                        Easily find friends by username and manage requests with our intuitive friend system.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 text-center text-slate-400 text-sm">
+        <p>&copy; 2025 ChatNix Messaging. Built with Supabase & Tailwind.</p>
+    </footer>
+
+    <script>
+        // Configuration
+        const SUPABASE_URL = 'https://aolxwzszsfvtqjbldcdd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_vyNRd2NL0JTDuYFtgMBleQ_ot-BhqRt';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // Check auth status on load
+        window.addEventListener('load', async () => {
+            const { data } = await supabaseClient.auth.getSession();
+            if (data?.session) {
+                // If logged in, skip landing and go to portal
+                window.location.href = 'portal.html';
+            }
+        });
+    </script>
+</body>
+</html>
