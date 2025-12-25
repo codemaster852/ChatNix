@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatNix - Login</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-600 to-purple-700 h-screen flex items-center justify-center p-4">
+    <div class="glass w-full max-w-md rounded-3xl shadow-2xl p-8 transition-all">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fa-solid fa-comment-dots text-3xl"></i>
+            </div>
+            <h1 class="text-3xl font-black text-gray-800 tracking-tight">ChatNix</h1>
+            <p id="auth-subtitle" class="text-gray-500">Sign in to continue chatting</p>
+        </div>
+
+        <form id="auth-form" class="space-y-4">
+            <div id="name-field" class="hidden relative">
+                <i class="fa-solid fa-user absolute left-3 top-3.5 text-gray-400"></i>
+                <input id="username" type="text" placeholder="Display Name" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition">
+            </div>
+            <div class="relative">
+                <i class="fa-solid fa-envelope absolute left-3 top-3.5 text-gray-400"></i>
+                <input id="email" type="email" required placeholder="Email Address" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition">
+            </div>
+            <div class="relative">
+                <i class="fa-solid fa-lock absolute left-3 top-3.5 text-gray-400"></i>
+                <input id="password" type="password" required placeholder="Password" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition">
+            </div>
+
+            <button type="submit" id="submit-btn" class="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all">
+                Sign In
+            </button>
+        </form>
+
+        <div class="mt-6 text-center">
+            <button id="toggle-auth" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                New here? Create an account
+            </button>
+        </div>
+        
+        <div id="msg-box" class="mt-4 p-3 rounded-lg text-sm hidden"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const SUPABASE_URL = 'https://aolxwzszsfvtqjbldcdd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_vyNRd2NL0JTDuYFtgMBleQ_ot-BhqRt';
+        
+        // Fix: Use a different name for the client instance to avoid conflict with the library 'supabase'
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let isSignUp = false;
+        const authForm = document.getElementById('auth-form');
+        const toggleBtn = document.getElementById('toggle-auth');
+        const nameField = document.getElementById('name-field');
+        const submitBtn = document.getElementById('submit-btn');
+        const msgBox = document.getElementById('msg-box');
+
+        toggleBtn.onclick = () => {
+            isSignUp = !isSignUp;
+            nameField.classList.toggle('hidden', !isSignUp);
+            submitBtn.innerText = isSignUp ? 'Create Account' : 'Sign In';
+            toggleBtn.innerText = isSignUp ? 'Already have an account? Sign In' : 'New here? Create an account';
+            document.getElementById('auth-subtitle').innerText = isSignUp ? 'Join the ChatNix community' : 'Sign in to continue chatting';
+        };
+
+        authForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const username = document.getElementById('username').value;
+            
+            msgBox.classList.add('hidden');
+
+            try {
+                if (isSignUp) {
+                    const { data, error } = await supabaseClient.auth.signUp({
+                        email,
+                        password,
+                        options: { data: { display_name: username } }
+                    });
+                    if (error) throw error;
+                    
+                    if (data.user) {
+                        // Create profile in public profiles table
+                        const { error: profileError } = await supabaseClient.from('profiles').insert([
+                            { id: data.user.id, username: username, email: email }
+                        ]);
+                        if (profileError) console.error("Profile creation error:", profileError);
+                    }
+
+                    showMsg('Account created! Please check your email or Sign In.', 'bg-green-100 text-green-700');
+                } else {
+                    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
+                    window.location.href = 'portal.html';
+                }
+            } catch (err) {
+                showMsg(err.message, 'bg-red-100 text-red-700');
+            }
+        };
+
+        function showMsg(text, classes) {
+            msgBox.innerText = text;
+            msgBox.className = `mt-4 p-3 rounded-lg text-sm ${classes}`;
+            msgBox.classList.remove('hidden');
+        }
+
+        // Auto-redirect if already logged in
+        window.addEventListener('load', async () => {
+            const { data } = await supabaseClient.auth.getSession();
+            if (data?.session) window.location.href = 'portal.html';
+        });
+    </script>
+</body>
+</html>
