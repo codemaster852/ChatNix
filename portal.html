@@ -9,8 +9,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .chat-bg { background-color: #f8fafc; }
-        .message-in { background-color: white; border-radius: 0 1.25rem 1.25rem 1.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-        .message-out { background-color: #4f46e5; color: white; border-radius: 1.25rem 0 1.25rem 1.25rem; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1); }
+        .message-in { background-color: white; border-radius: 0.25rem 1.25rem 1.25rem 1.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .message-out { background-color: #4f46e5; color: white; border-radius: 1.25rem 0.25rem 1.25rem 1.25rem; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.1); }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
@@ -32,6 +32,37 @@
 
         .img-preview { max-width: 200px; border-radius: 0.75rem; cursor: pointer; transition: transform 0.2s; }
         .img-preview:hover { transform: scale(1.02); }
+
+        /* Emoji Picker Styles */
+        #emoji-picker {
+            display: none;
+            position: absolute;
+            bottom: 60px;
+            right: 0;
+            width: 250px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            z-index: 50;
+            padding: 10px;
+        }
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 5px;
+        }
+        .emoji-item {
+            cursor: pointer;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.5rem;
+            transition: background 0.2s;
+            height: 35px;
+        }
+        .emoji-item:hover { background: #f1f5f9; }
     </style>
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden flex font-sans text-slate-900">
@@ -124,7 +155,20 @@
                     </div>
                     
                     <div class="flex-1 relative">
-                        <input id="msg-input" type="text" placeholder="Type a message..." class="w-full bg-slate-100 rounded-xl px-5 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none border-none transition">
+                        <input id="msg-input" type="text" placeholder="Type a message..." class="w-full bg-slate-100 rounded-xl pl-5 pr-12 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none border-none transition">
+                        
+                        <!-- Emoji Trigger -->
+                        <button onclick="toggleEmojiPicker()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 transition">
+                            <i class="fa-regular fa-face-smile text-lg"></i>
+                        </button>
+
+                        <!-- Emoji Picker Menu -->
+                        <div id="emoji-picker" class="animate-fade-in">
+                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Quick Emojis</div>
+                            <div class="emoji-grid" id="emoji-grid">
+                                <!-- Populated via JS -->
+                            </div>
+                        </div>
                     </div>
 
                     <button onclick="sendTextMessage()" class="w-10 h-10 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition flex items-center justify-center shrink-0">
@@ -183,6 +227,8 @@
         let pendingFile = null;
         let allFriends = [];
 
+        const EMOJIS = ['❤️', '😂', '🔥', '👍', '🙌', '✨', '😊', '😮', '😢', '🙏', '💯', '👋', '🎉', '💡', '✅', '❌', '👀', '🚀'];
+
         window.onload = async () => {
             const { data } = await client.auth.getSession();
             if (!data.session) { window.location.href = 'auth.html'; return; }
@@ -192,13 +238,42 @@
             document.getElementById('my-name').innerText = displayName;
             document.getElementById('my-avatar').innerText = displayName[0].toUpperCase();
             
+            initEmojiPicker();
             renderChats();
             setupRealtime();
 
             document.getElementById('msg-input').addEventListener('keypress', e => {
                 if (e.key === 'Enter') sendTextMessage();
             });
+
+            // Close emoji picker on click outside
+            window.addEventListener('click', (e) => {
+                const picker = document.getElementById('emoji-picker');
+                if (!picker.contains(e.target) && !e.target.closest('button[onclick="toggleEmojiPicker()"]')) {
+                    picker.style.display = 'none';
+                }
+            });
         };
+
+        function initEmojiPicker() {
+            const grid = document.getElementById('emoji-grid');
+            EMOJIS.forEach(emoji => {
+                const span = document.createElement('span');
+                span.className = 'emoji-item';
+                span.innerText = emoji;
+                span.onclick = () => {
+                    const input = document.getElementById('msg-input');
+                    input.value += emoji;
+                    input.focus();
+                };
+                grid.appendChild(span);
+            });
+        }
+
+        function toggleEmojiPicker() {
+            const picker = document.getElementById('emoji-picker');
+            picker.style.display = picker.style.display === 'block' ? 'none' : 'block';
+        }
 
         async function handleLogout() {
             await client.auth.signOut();
@@ -238,7 +313,6 @@
 
         function displayFriends(list) {
             const container = document.getElementById('list-container');
-            // Keep header
             container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Conversations</div>';
             
             list.forEach(f => {
@@ -342,7 +416,7 @@
             document.getElementById('chat-name').innerText = friend.username;
             document.getElementById('chat-avatar').innerText = (friend.username || 'U')[0].toUpperCase();
             loadMessages();
-            renderChats(); // Update visual selection
+            renderChats();
         }
 
         async function loadMessages() {
@@ -412,6 +486,9 @@
             const content = inp.value.trim();
             if ((!content && !pendingFile) || !selectedFriend) return;
             
+            // Hide picker if open
+            document.getElementById('emoji-picker').style.display = 'none';
+
             const cid = [currentUser.id, selectedFriend.id].sort().join(':');
             
             if (pendingFile) {
@@ -524,7 +601,6 @@
             audio.onended = () => icon.className = 'fa-solid fa-play';
         }
 
-        // --- VOICE NOTE LOGIC ---
         const mic = document.getElementById('mic-btn');
         async function startRecording() {
             try {
