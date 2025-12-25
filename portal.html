@@ -15,6 +15,16 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Pulse animation for recording */
+        .recording-pulse {
+            animation: pulse-red 1.5s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
     </style>
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden flex font-sans">
@@ -91,15 +101,15 @@
 
         let currentUser = null;
         let selectedFriend = null;
-        let mediaRecorder;
+        let mediaRecorder = null;
         let audioChunks = [];
+        let stream = null;
 
         window.onload = async () => {
             const { data } = await client.auth.getSession();
             if (!data.session) { window.location.href = 'auth.html'; return; }
             currentUser = data.session.user;
             
-            // Extract display name or email from user metadata
             const displayName = currentUser.user_metadata?.display_name || currentUser.user_metadata?.full_name || currentUser.email;
             document.getElementById('my-name').innerText = displayName;
             document.getElementById('my-avatar').innerText = displayName[0].toUpperCase();
@@ -123,7 +133,7 @@
             const container = document.getElementById('list-container');
             container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Messages</div>';
             
-            const { data, error } = await client.from('friends').select('*, profiles!friends_friend_id_fkey(*)').eq('user_id', currentUser.id).eq('status', 'accepted');
+            const { data } = await client.from('friends').select('*, profiles!friends_friend_id_fkey(*)').eq('user_id', currentUser.id).eq('status', 'accepted');
             const { data: data2 } = await client.from('friends').select('*, profiles!friends_user_id_fkey(*)').eq('friend_id', currentUser.id).eq('status', 'accepted');
             
             const friends = [...(data || []), ...(data2 || [])].map(f => f.profiles).filter(p => p !== null);
@@ -168,12 +178,10 @@
             const input = document.getElementById('search-input');
             const q = input.value.trim();
             const resDiv = document.getElementById('search-results');
-            
             if (!q) return;
 
             resDiv.innerHTML = '<div class="text-center py-4"><i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i></div>';
 
-            // Try multiple fields for a broader search
             const { data, error } = await client
                 .from('profiles')
                 .select('*')
@@ -182,40 +190,30 @@
                 .limit(10);
 
             if (error) {
-                console.error("Search error:", error);
                 resDiv.innerHTML = `<p class="text-red-500 text-xs text-center">Error: ${error.message}</p>`;
                 return;
             }
 
             if (!data || data.length === 0) {
-                resDiv.innerHTML = '<p class="text-slate-400 text-xs text-center mt-4">No users found. Try a different name or email.</p>';
+                resDiv.innerHTML = '<p class="text-slate-400 text-xs text-center mt-4">No users found.</p>';
                 return;
             }
 
-            renderSearchResults(data);
-        }
-
-        function renderSearchResults(users) {
-            const resDiv = document.getElementById('search-results');
-            resDiv.innerHTML = users.map(u => `
+            resDiv.innerHTML = data.map(u => `
                 <div class="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-indigo-200 transition">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">${(u.username || 'U')[0].toUpperCase()}</div>
                         <span class="text-xs font-bold text-slate-700">${u.username || 'User'}</span>
                     </div>
-                    <button onclick="sendRequest('${u.id}')" class="text-[9px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-indigo-700 active:scale-95 transition">Add</button>
+                    <button onclick="sendRequest('${u.id}')" class="text-[9px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-indigo-700 transition">Add</button>
                 </div>
             `).join('');
         }
 
         async function sendRequest(fid) {
             const { error } = await client.from('friends').insert([{ user_id: currentUser.id, friend_id: fid, status: 'pending' }]);
-            if (error) {
-                if (error.code === '23505') alert("Friend request already sent!");
-                else alert("Error: " + error.message);
-            } else {
-                alert("Friend request sent!");
-            }
+            if (error) alert(error.code === '23505' ? "Request already sent!" : "Error: " + error.message);
+            else alert("Friend request sent!");
         }
 
         async function renderRequests() {
@@ -234,8 +232,8 @@
                 div.innerHTML = `
                     <div class="text-xs font-bold text-slate-700">${r.profiles?.username || 'Unknown'}</div>
                     <div class="flex gap-2">
-                        <button onclick="updateReq(${r.id}, 'accepted')" class="p-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"><i class="fa-solid fa-check"></i></button>
-                        <button onclick="updateReq(${r.id}, 'declined')" class="p-1.5 bg-slate-200 text-slate-500 rounded-lg hover:bg-slate-300 transition"><i class="fa-solid fa-xmark"></i></button>
+                        <button onclick="updateReq(${r.id}, 'accepted')" class="p-1.5 bg-green-500 text-white rounded-lg"><i class="fa-solid fa-check"></i></button>
+                        <button onclick="updateReq(${r.id}, 'declined')" class="p-1.5 bg-slate-200 text-slate-500 rounded-lg"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                 `;
                 container.appendChild(div);
@@ -243,11 +241,8 @@
         }
 
         async function updateReq(id, status) {
-            if (status === 'declined') {
-                await client.from('friends').delete().eq('id', id);
-            } else {
-                await client.from('friends').update({ status }).eq('id', id);
-            }
+            if (status === 'declined') await client.from('friends').delete().eq('id', id);
+            else await client.from('friends').update({ status }).eq('id', id);
             renderRequests();
         }
 
@@ -274,11 +269,30 @@
             const isMe = m.sender_id === currentUser.id;
             const div = document.createElement('div');
             div.className = `flex ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`;
-            div.innerHTML = m.type === 'voice' 
-                ? `<div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in'}"><button onclick="new Audio('${m.content}').play()" class="flex items-center gap-2"><i class="fa-solid fa-play"></i> Voice Note</button></div>`
-                : `<div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in text-slate-700'} text-sm font-medium">${m.content}</div>`;
+            
+            if (m.type === 'voice') {
+                div.innerHTML = `
+                    <div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in'}">
+                        <button onclick="playVoice(this, '${m.content}')" class="flex items-center gap-3">
+                            <i class="fa-solid fa-play"></i>
+                            <span class="text-xs font-bold uppercase tracking-wider">Voice Note</span>
+                        </button>
+                    </div>
+                `;
+            } else {
+                div.innerHTML = `<div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in text-slate-700'} text-sm font-medium">${m.content}</div>`;
+            }
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
+        }
+
+        function playVoice(btn, dataUrl) {
+            const icon = btn.querySelector('i');
+            const audio = new Audio(dataUrl);
+            icon.className = 'fa-solid fa-spinner fa-spin';
+            audio.play();
+            audio.onplay = () => icon.className = 'fa-solid fa-pause';
+            audio.onended = () => icon.className = 'fa-solid fa-play';
         }
 
         async function sendTextMessage() {
@@ -297,32 +311,87 @@
             }).subscribe();
         }
 
-        // Voice recorder implementation
+        // --- FIXED VOICE NOTE LOGIC ---
         const mic = document.getElementById('mic-btn');
-        mic.onmousedown = async () => {
+        
+        async function startRecording() {
             try {
-                const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(s);
-                mediaRecorder.start();
-                mic.classList.replace('bg-slate-100', 'bg-red-500');
-                mic.classList.add('text-white');
-                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                mediaRecorder.onstop = async () => {
-                    const blob = new Blob(audioChunks, { type: 'audio/ogg' });
-                    const r = new FileReader();
-                    r.readAsDataURL(blob);
-                    r.onloadend = async () => {
-                        const cid = [currentUser.id, selectedFriend.id].sort().join(':');
-                        await client.from('messages').insert([{ chat_id: cid, sender_id: currentUser.id, content: r.result, type: 'voice' }]);
-                    };
-                    audioChunks = [];
+                audioChunks = [];
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) audioChunks.push(event.data);
                 };
-            } catch(e) { alert("Microphone access denied or not available."); }
-        };
-        mic.onmouseup = () => { if(mediaRecorder) mediaRecorder.stop(); mic.className = mic.className.replace('bg-red-500', 'bg-slate-100').replace('text-white', ''); };
 
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = async () => {
+                        const base64data = reader.result;
+                        const cid = [currentUser.id, selectedFriend.id].sort().join(':');
+                        await client.from('messages').insert([{ 
+                            chat_id: cid, 
+                            sender_id: currentUser.id, 
+                            content: base64data, 
+                            type: 'voice' 
+                        }]);
+                    };
+                    // Stop all tracks to release microphone
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                mic.classList.add('bg-red-500', 'text-white', 'recording-pulse');
+                mic.classList.remove('bg-slate-100', 'text-slate-500');
+            } catch (err) {
+                console.error("Mic error:", err);
+                alert("Could not access microphone. Please check permissions.");
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mic.classList.remove('bg-red-500', 'text-white', 'recording-pulse');
+                mic.classList.add('bg-slate-100', 'text-slate-500');
+            }
+        }
+
+        // Use pointer events for better mobile/desktop compatibility
+        mic.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            startRecording();
+        });
+        
+        window.addEventListener('pointerup', () => {
+            stopRecording();
+        });
+
+        // --- FIXED CALLING UI ---
         function startCall() { 
-            const overlay = `<div id="co" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in"><div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse mb-8 flex items-center justify-center text-4xl font-bold">${(selectedFriend.username || 'U')[0].toUpperCase()}</div><h2 class="text-2xl font-bold">${selectedFriend.username}</h2><p class="mb-12 opacity-50">Calling...</p><button onclick="document.getElementById('co').remove()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition"><i class="fa-solid fa-phone-slash text-2xl"></i></button></div>`;
+            if (!selectedFriend) return;
+            
+            const overlayId = 'call-overlay-' + Date.now();
+            const overlay = `
+                <div id="${overlayId}" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in">
+                    <div class="relative">
+                        <div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse flex items-center justify-center text-4xl font-bold shadow-2xl">
+                            ${(selectedFriend.username || 'U')[0].toUpperCase()}
+                        </div>
+                        <div class="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-indigo-950"></div>
+                    </div>
+                    <h2 class="text-2xl font-bold mt-8">${selectedFriend.username}</h2>
+                    <p class="mt-2 opacity-50 tracking-widest uppercase text-xs font-black">Calling via ChatNix...</p>
+                    
+                    <div class="flex gap-8 mt-16">
+                        <button onclick="document.getElementById('${overlayId}').remove()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg active:scale-90">
+                            <i class="fa-solid fa-phone-slash text-2xl"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
             document.body.insertAdjacentHTML('beforeend', overlay); 
         }
     </script>
