@@ -13,6 +13,8 @@
         .message-out { background-color: #4f46e5; color: white; border-radius: 1.25rem 0 1.25rem 1.25rem; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden flex font-sans">
@@ -22,9 +24,9 @@
         <div class="p-5 bg-indigo-600 text-white flex justify-between items-center">
             <h1 class="text-xl font-bold tracking-tight">ChatNix</h1>
             <div class="flex gap-2">
-                <button onclick="switchTab('chats')" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-message"></i></button>
-                <button onclick="switchTab('search')" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-user-plus"></i></button>
-                <button onclick="switchTab('requests')" class="relative p-2 rounded-lg hover:bg-indigo-500 transition">
+                <button onclick="switchTab('chats')" title="Messages" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-message"></i></button>
+                <button onclick="switchTab('search')" title="Find Friends" class="p-2 rounded-lg hover:bg-indigo-500 transition"><i class="fa-solid fa-user-plus"></i></button>
+                <button onclick="switchTab('requests')" title="Requests" class="relative p-2 rounded-lg hover:bg-indigo-500 transition">
                     <i class="fa-solid fa-bell"></i>
                     <span id="req-badge" class="hidden absolute top-1 right-1 bg-red-500 w-2 h-2 rounded-full border-2 border-indigo-600"></span>
                 </button>
@@ -47,11 +49,11 @@
 
     <!-- Main Chat Area -->
     <div id="chat-area" class="flex-1 flex flex-col chat-bg relative">
-        <div id="no-chat" class="flex-1 flex flex-col items-center justify-center text-slate-300">
+        <div id="no-chat" class="flex-1 flex flex-col items-center justify-center text-slate-300 p-8 text-center">
             <div class="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center mb-6">
                 <i class="fa-solid fa-comments text-4xl text-slate-200"></i>
             </div>
-            <p class="text-slate-400 font-medium">Select a conversation to start</p>
+            <p class="text-slate-400 font-medium">Select a conversation or find a friend to start chatting</p>
         </div>
 
         <div id="active-chat" class="hidden flex flex-col h-full">
@@ -125,7 +127,7 @@
             const friends = [...(data || []), ...(data2 || [])].map(f => f.profiles);
             
             if (friends.length === 0) {
-                container.innerHTML += '<p class="p-8 text-center text-slate-400 text-sm">No friends yet</p>';
+                container.innerHTML += '<p class="p-8 text-center text-slate-400 text-sm">No friends yet. Use search to find people!</p>';
                 return;
             }
 
@@ -144,36 +146,72 @@
         function renderSearch() {
             const container = document.getElementById('list-container');
             container.innerHTML = `
-                <div class="p-4 space-y-4">
+                <div class="p-4 space-y-4 animate-fade-in">
                     <div class="flex gap-2">
-                        <input id="search-input" type="text" placeholder="Search people..." class="flex-1 px-4 py-2 bg-slate-100 rounded-xl outline-none text-sm">
-                        <button onclick="performSearch()" class="bg-indigo-600 text-white p-2 rounded-xl"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        <input id="search-input" type="text" placeholder="Type a username..." class="flex-1 px-4 py-2.5 bg-slate-100 rounded-xl outline-none text-sm border focus:border-indigo-300 transition">
+                        <button onclick="performSearch()" class="bg-indigo-600 text-white p-2.5 rounded-xl hover:bg-indigo-700 transition"><i class="fa-solid fa-magnifying-glass"></i></button>
                     </div>
-                    <div id="search-results" class="space-y-2"></div>
+                    <div id="search-results" class="space-y-2">
+                        <p class="text-center text-slate-400 text-xs mt-4">Search for users to add them as friends</p>
+                    </div>
                 </div>
             `;
+            // Add Enter key listener
+            document.getElementById('search-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') performSearch();
+            });
         }
 
         async function performSearch() {
-            const q = document.getElementById('search-input').value;
+            const input = document.getElementById('search-input');
+            const q = input.value.trim();
             const resDiv = document.getElementById('search-results');
-            const { data } = await client.from('profiles').select('*').ilike('username', `%${q}%`).neq('id', currentUser.id);
+            
+            if (!q) return;
+
+            resDiv.innerHTML = '<div class="text-center py-4"><i class="fa-solid fa-circle-notch fa-spin text-indigo-600"></i></div>';
+
+            const { data, error } = await client
+                .from('profiles')
+                .select('*')
+                .ilike('username', `%${q}%`)
+                .neq('id', currentUser.id)
+                .limit(10);
+
+            if (error) {
+                resDiv.innerHTML = `<p class="text-red-500 text-xs text-center">Error: ${error.message}</p>`;
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                resDiv.innerHTML = '<p class="text-slate-400 text-xs text-center mt-4">No users found with that name.</p>';
+                return;
+            }
+
             resDiv.innerHTML = data.map(u => `
-                <div class="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                    <span class="text-xs font-bold text-slate-700">${u.username}</span>
-                    <button onclick="sendRequest('${u.id}')" class="text-[9px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase">Add Friend</button>
+                <div class="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-indigo-200 transition">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">${u.username[0].toUpperCase()}</div>
+                        <span class="text-xs font-bold text-slate-700">${u.username}</span>
+                    </div>
+                    <button onclick="sendRequest('${u.id}')" class="text-[9px] bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-black uppercase hover:bg-indigo-700 active:scale-95 transition">Add</button>
                 </div>
             `).join('');
         }
 
         async function sendRequest(fid) {
-            const { error } = await client.from('friends').insert([{ user_id: currentUser.id, friend_id: fid }]);
-            alert(error ? "Already sent" : "Request sent!");
+            const { error } = await client.from('friends').insert([{ user_id: currentUser.id, friend_id: fid, status: 'pending' }]);
+            if (error) {
+                if (error.code === '23505') alert("Friend request already sent!");
+                else alert("Error: " + error.message);
+            } else {
+                alert("Friend request sent!");
+            }
         }
 
         async function renderRequests() {
             const container = document.getElementById('list-container');
-            container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Friend Requests</div>';
+            container.innerHTML = '<div class="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Incoming Requests</div>';
             const { data } = await client.from('friends').select('*, profiles!friends_user_id_fkey(*)').eq('friend_id', currentUser.id).eq('status', 'pending');
             
             if (!data || data.length === 0) {
@@ -183,12 +221,12 @@
 
             data.forEach(r => {
                 const div = document.createElement('div');
-                div.className = "p-4 border-b border-slate-50 flex items-center justify-between";
+                div.className = "p-4 border-b border-slate-50 flex items-center justify-between animate-fade-in";
                 div.innerHTML = `
                     <div class="text-xs font-bold text-slate-700">${r.profiles.username}</div>
                     <div class="flex gap-2">
-                        <button onclick="updateReq(${r.id}, 'accepted')" class="p-1.5 bg-green-500 text-white rounded-lg"><i class="fa-solid fa-check"></i></button>
-                        <button onclick="updateReq(${r.id}, 'declined')" class="p-1.5 bg-slate-200 text-slate-500 rounded-lg"><i class="fa-solid fa-xmark"></i></button>
+                        <button onclick="updateReq(${r.id}, 'accepted')" class="p-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"><i class="fa-solid fa-check"></i></button>
+                        <button onclick="updateReq(${r.id}, 'declined')" class="p-1.5 bg-slate-200 text-slate-500 rounded-lg hover:bg-slate-300 transition"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                 `;
                 container.appendChild(div);
@@ -196,7 +234,11 @@
         }
 
         async function updateReq(id, status) {
-            await client.from('friends').update({ status }).eq('id', id);
+            if (status === 'declined') {
+                await client.from('friends').delete().eq('id', id);
+            } else {
+                await client.from('friends').update({ status }).eq('id', id);
+            }
             renderRequests();
         }
 
@@ -205,7 +247,7 @@
             document.getElementById('no-chat').classList.add('hidden');
             document.getElementById('active-chat').classList.remove('hidden');
             document.getElementById('chat-name').innerText = friend.username;
-            document.getElementById('chat-avatar').innerText = friend.username[0];
+            document.getElementById('chat-avatar').innerText = friend.username[0].toUpperCase();
             loadMessages();
         }
 
@@ -222,7 +264,7 @@
             const container = document.getElementById('messages-container');
             const isMe = m.sender_id === currentUser.id;
             const div = document.createElement('div');
-            div.className = `flex ${isMe ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`;
+            div.className = `flex ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`;
             div.innerHTML = m.type === 'voice' 
                 ? `<div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in'}"><button onclick="new Audio('${m.content}').play()" class="flex items-center gap-2"><i class="fa-solid fa-play"></i> Voice Note</button></div>`
                 : `<div class="p-3 shadow-sm ${isMe ? 'message-out' : 'message-in text-slate-700'} text-sm font-medium">${m.content}</div>`;
@@ -249,26 +291,31 @@
         // Voice
         const mic = document.getElementById('mic-btn');
         mic.onmousedown = async () => {
-            const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(s);
-            mediaRecorder.start();
-            mic.classList.replace('bg-slate-100', 'bg-red-500');
-            mic.classList.add('text-white');
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(audioChunks, { type: 'audio/ogg' });
-                const r = new FileReader();
-                r.readAsDataURL(blob);
-                r.onloadend = async () => {
-                    const cid = [currentUser.id, selectedFriend.id].sort().join(':');
-                    await client.from('messages').insert([{ chat_id: cid, sender_id: currentUser.id, content: r.result, type: 'voice' }]);
+            try {
+                const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(s);
+                mediaRecorder.start();
+                mic.classList.replace('bg-slate-100', 'bg-red-500');
+                mic.classList.add('text-white');
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/ogg' });
+                    const r = new FileReader();
+                    r.readAsDataURL(blob);
+                    r.onloadend = async () => {
+                        const cid = [currentUser.id, selectedFriend.id].sort().join(':');
+                        await client.from('messages').insert([{ chat_id: cid, sender_id: currentUser.id, content: r.result, type: 'voice' }]);
+                    };
+                    audioChunks = [];
                 };
-                audioChunks = [];
-            };
+            } catch(e) { alert("Microphone access denied or not available."); }
         };
-        mic.onmouseup = () => { mediaRecorder.stop(); mic.className = mic.className.replace('bg-red-500', 'bg-slate-100').replace('text-white', ''); };
+        mic.onmouseup = () => { if(mediaRecorder) mediaRecorder.stop(); mic.className = mic.className.replace('bg-red-500', 'bg-slate-100').replace('text-white', ''); };
 
-        function startCall() { document.body.insertAdjacentHTML('beforeend', `<div id="co" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100]"><div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse mb-8 flex items-center justify-center text-4xl font-bold">${selectedFriend.username[0]}</div><h2 class="text-2xl font-bold">${selectedFriend.username}</h2><p class="mb-12 opacity-50">Calling...</p><button onclick="document.getElementById('co').remove()" class="w-16 h-16 bg-red-500 rounded-full"><i class="fa-solid fa-phone-slash"></i></button></div>`); }
+        function startCall() { 
+            const overlay = `<div id="co" class="fixed inset-0 bg-indigo-950 flex flex-col items-center justify-center text-white z-[100] animate-fade-in"><div class="w-32 h-32 rounded-full bg-indigo-500 animate-pulse mb-8 flex items-center justify-center text-4xl font-bold">${selectedFriend.username[0].toUpperCase()}</div><h2 class="text-2xl font-bold">${selectedFriend.username}</h2><p class="mb-12 opacity-50">Calling...</p><button onclick="document.getElementById('co').remove()" class="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition"><i class="fa-solid fa-phone-slash text-2xl"></i></button></div>`;
+            document.body.insertAdjacentHTML('beforeend', overlay); 
+        }
     </script>
 </body>
 </html>
